@@ -1,0 +1,48 @@
+[Unit]
+Description=Double-tap Shift to toggle Caps Lock, with on/off notifications
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/dscn
+Restart=on-failure
+RestartSec=3
+
+# --- hardening ---------------------------------------------------------------
+# Runs as root (needs raw access to /dev/input/event* and /dev/uinput). The only
+# extra privilege vs. a plain input daemon is CAP_SETUID/CAP_SETGID: notifications
+# are sent by running notify-send as the logged-in user on their session bus
+# (unix socket under /run/user, so PrivateNetwork does not get in the way).
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID
+AmbientCapabilities=
+DevicePolicy=closed
+DeviceAllow=char-input rw
+DeviceAllow=/dev/uinput rw
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateMounts=yes
+ProtectSystem=strict
+# "yes" would also hide /run/user, which the notification path needs.
+ProtectHome=no
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service @setuid
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
