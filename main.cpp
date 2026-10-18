@@ -1,18 +1,18 @@
-// dscn — double-tap Shift to toggle Caps Lock, and notify when Caps Lock turns on/off.
-// Every keyboard is grabbed and all its keys are forwarded through one virtual keyboard, which also carries the injected
-// KEY_CAPSLOCK tap. Compositors keep Caps Lock state per input device, so a tap injected from a *second* device would be
-// cancelled by the next real keystroke. The compositor's LED writes to the virtual keyboard drive both the physical
-// keyboards' LEDs and the notifications.
+/*
+ * dscn — double-tap Shift toggles Caps Lock; the Caps Lock key acts as Super and the Super key is disabled.
+ * Every keyboard is grabbed and all its keys are forwarded through one virtual keyboard, which also carries the injected
+ * KEY_CAPSLOCK tap. Compositors keep Caps Lock state per input device, so a tap injected from a *second* device would be
+ * cancelled by the next real keystroke. The compositor's LED writes to the virtual keyboard drive both the physical
+ * keyboards' LEDs.
+ */
 
 #include <libevdev/libevdev-uinput.h>
 #include <libevdev/libevdev.h>
 
 #include <dirent.h>
 #include <fcntl.h>
-#include <grp.h>
 #include <linux/input.h>
 #include <poll.h>
-#include <pwd.h>
 #include <sys/inotify.h>
 #include <unistd.h>
 
@@ -34,10 +34,8 @@ namespace {
 // Parameters
 
 constexpr int DOUBLE_SHIFT_MS = 300;   // Max time between the presses of two taps of the same Shift key.
-constexpr int NOTIFY_TIMEOUT_MS = 1200; // How long the Caps Lock notification stays on screen.
 
 constexpr const char *VIRTUAL_KBD_NAME = "dscn-kbd";
-constexpr unsigned MIN_USER_UID = 1000; // Sessions below this uid (system accounts) are not notified.
 // How often the loop wakes up with no data, to notice a signal. Just responsiveness, not precision.
 constexpr int POLL_IDLE_MS = 500;
 
@@ -48,10 +46,10 @@ void on_signal(int) { g_stop = 1; }
 
 bool is_shift(unsigned code) { return code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT; }
 
-// ---------------------------------------------------------------------------
-// Double-tap detector - one per physical keyboard, fed key events in order.
-// A "clean tap" is a Shift press+release with no other key down at press time and no other key event in between.
-// ---------------------------------------------------------------------------
+/*
+ * Double-tap detector - one per physical keyboard, fed key events in order.
+ * A "clean tap" is a Shift press+release with no other key down at press time and no other key event in between.
+ */
 
 struct Detector {
     std::bitset<KEY_CNT> down;
@@ -96,9 +94,7 @@ struct Detector {
     }
 };
 
-// ---------------------------------------------------------------------------
 // Devices
-// ---------------------------------------------------------------------------
 
 struct Keyboard {
     int fd = -1;
@@ -126,58 +122,8 @@ struct Context {
     std::array<int, LED_CNT> leds{};     // Last LED values the compositor asked for.
 };
 
-// ---------------------------------------------------------------------------
-// Notification - runs notify-send as each logged-in user (we are root, the session bus is theirs).
-// ---------------------------------------------------------------------------
 
-void notify_user(uid_t uid, bool on) {
-    struct passwd *pw = getpwuid(uid);
-    if (!pw)
-        return;
-    gid_t gid = pw->pw_gid;
-    std::string runtime_dir = "/run/user/" + std::to_string(uid);
-    std::string bus_path = runtime_dir + "/bus";
-    std::string bus_addr = "unix:path=" + bus_path;
-    std::string timeout = std::to_string(NOTIFY_TIMEOUT_MS);
-
-    if (fork() != 0)
-        return;
-
-    // child: drop to the user, then hand over to notify-send
-    signal(SIGCHLD, SIG_DFL);
-    if (setgroups(0, nullptr) != 0 || setgid(gid) != 0 || setuid(uid) != 0)
-        _exit(126);
-    if (access(bus_path.c_str(), F_OK) != 0) // not a session with a bus (we can only see this after dropping root)
-        _exit(0);
-    setenv("XDG_RUNTIME_DIR", runtime_dir.c_str(), 1);
-    setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr.c_str(), 1);
-    execlp("notify-send", "notify-send", "-a", "dscn", "-u", "low", "-i", "input-keyboard", "-t", timeout.c_str(), "-h",
-           "string:x-canonical-private-synchronous:dscn-caps", "Caps Lock", on ? "ON" : "OFF", static_cast<char *>(nullptr));
-    _exit(127);
-}
-
-void notify_caps(bool on) {
-    printf("Caps Lock %s\n", on ? "ON" : "OFF");
-    fflush(stdout);
-
-    DIR *dir = opendir("/run/user");
-    if (!dir)
-        return;
-    std::vector<uid_t> uids;
-    for (struct dirent *entry; (entry = readdir(dir)) != nullptr;) {
-        char *end = nullptr;
-        unsigned long uid = std::strtoul(entry->d_name, &end, 10);
-        if (end != entry->d_name && *end == '\0' && uid >= MIN_USER_UID)
-            uids.push_back(static_cast<uid_t>(uid));
-    }
-    closedir(dir);
-    for (uid_t uid : uids)
-        notify_user(uid, on);
-}
-
-// ---------------------------------------------------------------------------
 // LEDs - the compositor writes them to the virtual keyboard; mirror them onto the physical ones.
-// ---------------------------------------------------------------------------
 
 void write_led(const Keyboard &kb, unsigned code, int value) {
     input_event evs[2]{};
@@ -193,12 +139,9 @@ void write_led(const Keyboard &kb, unsigned code, int value) {
 void on_led(Context &ctx, unsigned code, int value) {
     if (code >= LED_CNT)
         return;
-    bool changed = ctx.leds[code] != value;
     ctx.leds[code] = value;
     for (const auto &kb : ctx.kbs)
         write_led(*kb, code, value);
-    if (changed && code == LED_CAPSL)
-        notify_caps(value != 0);
 }
 
 void pump_leds(Context &ctx) {
@@ -209,9 +152,7 @@ void pump_leds(Context &ctx) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Virtual keyboard
-// ---------------------------------------------------------------------------
 
 struct libevdev_uinput *create_virtual_keyboard() {
     struct libevdev *vdev = libevdev_new();
@@ -243,9 +184,7 @@ bool tap_capslock(struct libevdev_uinput *ui) {
     return rc == 0;
 }
 
-// ---------------------------------------------------------------------------
 // Keyboard discovery
-// ---------------------------------------------------------------------------
 
 // A plain keyboard: has letters and Shift, and no pointer axes (a keyboard+mouse combo node would lose its mouse when grabbed).
 bool is_keyboard(struct libevdev *dev) {
@@ -324,15 +263,17 @@ void handle_hotplug(Context &ctx, int ifd) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Event pump
-// ---------------------------------------------------------------------------
 
-// Forwards one event to the virtual keyboard, watching Shift on the way.
-void handle_event(Context &ctx, Keyboard &kb, const input_event &ev, bool syncing) {
+// Forwards one event to the virtual keyboard, mapping Caps Lock to Super, dropping Super, and watching Shift on the way.
+void handle_event(Context &ctx, Keyboard &kb, input_event ev, bool syncing) {
     if (ev.type == EV_KEY) {
         if (ev.value == 2) // autorepeat: the compositor does its own
             return;
+        if (ev.code == KEY_LEFTMETA || ev.code == KEY_RIGHTMETA) // Super is disabled
+            return;
+        if (ev.code == KEY_CAPSLOCK) // Caps Lock key acts as Super
+            ev.code = KEY_LEFTMETA;
         if (!syncing && kb.det.feed(ev.code, ev.value, Clock::now()))
             kb.toggle_pending = true;
     } else if (ev.type == EV_SYN) {
@@ -385,12 +326,6 @@ int main() {
     sa.sa_handler = on_signal;
     sigaction(SIGINT, &sa, nullptr);
     sigaction(SIGTERM, &sa, nullptr);
-
-    // notify-send children are fire-and-forget; don't leave zombies
-    struct sigaction sc{};
-    sc.sa_handler = SIG_IGN;
-    sc.sa_flags = SA_NOCLDWAIT;
-    sigaction(SIGCHLD, &sc, nullptr);
 
     Context ctx;
     ctx.vkbd = create_virtual_keyboard();

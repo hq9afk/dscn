@@ -15,3 +15,6 @@ executable('dscn', 'main.cpp',
   install : true,
   install_dir : get_option('bindir'),
 )
+
+install_data('misc/dscn.service', install_dir : 'lib/systemd/system')
+install_data('misc/dscn.conf', install_dir : 'lib/modules-load.d')
