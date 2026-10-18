@@ -11,10 +11,14 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-cmd_setup() { sudo pacman -S --needed meson ninja gcc pkgconf libevdev; }
+cmd_setup() { sudo pacman -S --needed meson ninja gcc pkgconf libevdev libnotify; }
 
 cmd_build() {
-    [[ -f build/build.ninja ]] || meson setup build --prefix=/usr
+    if [[ -f build/build.ninja ]]; then
+        meson configure build --prefix=/usr
+    else
+        meson setup build --prefix=/usr
+    fi
     meson compile -C build
 }
 
