@@ -36,6 +36,8 @@ namespace {
 constexpr int DOUBLE_SHIFT_MS = 300;   // Max time between the presses of two taps of the same Shift key.
 
 constexpr const char *VIRTUAL_KBD_NAME = "dscn-kbd";
+// IBM Model M behind a generic PS/2-to-USB adapter; it shows up as "Barcode Reader" so the checks below can't tell it apart.
+constexpr int MODEL_M_VENDOR = 0x13ba, MODEL_M_PRODUCT = 0x0018;
 // How often the loop wakes up with no data, to notice a signal. Just responsiveness, not precision.
 constexpr int POLL_IDLE_MS = 500;
 
@@ -191,8 +193,11 @@ bool is_keyboard(struct libevdev *dev) {
     const char *name = libevdev_get_name(dev);
     if (name && std::strcmp(name, VIRTUAL_KBD_NAME) == 0)
         return false;
-    return libevdev_has_event_type(dev, EV_KEY) && libevdev_has_event_code(dev, EV_KEY, KEY_A) &&
-           libevdev_has_event_code(dev, EV_KEY, KEY_LEFTSHIFT) && !libevdev_has_event_type(dev, EV_REL) &&
+    if (!libevdev_has_event_code(dev, EV_KEY, KEY_A))
+        return false;
+    if (libevdev_get_id_vendor(dev) == MODEL_M_VENDOR && libevdev_get_id_product(dev) == MODEL_M_PRODUCT)
+        return true;
+    return libevdev_has_event_code(dev, EV_KEY, KEY_LEFTSHIFT) && !libevdev_has_event_type(dev, EV_REL) &&
            !libevdev_has_event_type(dev, EV_ABS);
 }
 
