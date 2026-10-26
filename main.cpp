@@ -1,5 +1,5 @@
 /*
- * dscn — double-tap Shift toggles Caps Lock; the Caps Lock key acts as Super the Super key is disabled, and Caps Lock changes are notified.
+ * dscn — double-tap Shift toggles Caps Lock (the Caps Lock key itself is untouched), and Caps Lock changes are notified.
  * Every keyboard is grabbed and all its keys are forwarded through one virtual keyboard, which also carries the injected
  * KEY_CAPSLOCK tap. Compositors keep Caps Lock state per input device, so a tap injected from a *second* device would be
  * cancelled by the next real keystroke. The compositor's LED writes to the virtual keyboard drive both the physical
@@ -326,15 +326,11 @@ void handle_hotplug(Context &ctx, int ifd) {
 
 // Event pump
 
-// Forwards one event to the virtual keyboard, mapping Caps Lock to Super, dropping Super, and watching Shift on the way.
+// Forwards one event unchanged to the virtual keyboard, watching Shift on the way.
 void handle_event(Context &ctx, Keyboard &kb, input_event ev, bool syncing) {
     if (ev.type == EV_KEY) {
         if (ev.value == 2) // autorepeat: the compositor does its own
             return;
-        if (ev.code == KEY_LEFTMETA || ev.code == KEY_RIGHTMETA) // Super is disabled
-            return;
-        if (ev.code == KEY_CAPSLOCK) // Caps Lock key acts as Super
-            ev.code = KEY_LEFTMETA;
         if (!syncing && kb.det.feed(ev.code, ev.value, Clock::now()))
             kb.toggle_pending = true;
     } else if (ev.type == EV_SYN) {
